@@ -1,0 +1,55 @@
+inventory:
+  - name: R1
+    device_type: cisco_ios
+
+  - name: R2
+    device_type: cisco_ios
+
+  - name: SW1
+    device_type: cisco_ios
+
+tests:
+  - name: Reachability Check
+    type: ping
+    destinations:
+      - 8.8.8.8
+      - 1.1.1.1
+      - 192.168.1.254
+    count: 4
+    enabled: true
+
+  - name: Show Version
+    command: show version
+    enabled: true
+
+  - name: Show IP Interface Brief
+    command: show ip interface brief
+    enabled: true
+
+  - name: Show IP Route
+    command: show ip route
+    enabled: true
+
+  - name: Show ARP
+    command: show arp
+    enabled: true
+
+  - name: Show CDP Neighbors
+    command: show cdp neighbors detail
+    enabled: false
+
+  - name: Show BGP Summary
+    command: show bgp summary
+    enabled: false
+
+  - name: Show OSPF Neighbors
+    command: show ip ospf neighbor
+    enabled: false
+
+  - name: Show Spanning Tree
+    command: show spanning-tree
+    enabled: false
+
+  - name: Show MAC Address Table
+    command: show mac address-table
+    enabled: true
