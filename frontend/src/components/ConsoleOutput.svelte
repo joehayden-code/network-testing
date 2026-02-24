@@ -18,17 +18,13 @@
     return events
       .map((e) => {
         if (e.type === "start")
-          return `=== Starting: ${e.total_ping_tests ?? 0} ping test(s), ${e.total_command_tests ?? 0} device test(s) across ${e.total_devices} device(s) ===\n`;
-        if (e.type === "ping_section")
-          return `\n── Host Pings ──\n`;
-        if (e.type === "ping_test_start")
-          return `\n[HOST] ${e.test} (${e.destinations?.length} destination(s), count=${e.count})\n`;
-        if (e.type === "ping_result")
-          return `\n$ ping ${e.destination}\n${e.output}\n`;
-        if (e.type === "device_section")
-          return `\n── Device Tests ──\n`;
+          return `=== Starting: ${e.total_devices} device(s), ${e.total_tests} test(s) ===\n`;
         if (e.type === "device_start")
           return `\n[${e.device}] Connecting to ${e.host}...\n`;
+        if (e.type === "ping_test_start")
+          return `[${e.device}] ${e.test} — ${e.destinations?.length} destination(s), count=${e.count}\n`;
+        if (e.type === "ping_result")
+          return `[${e.device}] $ ${e.command}\n${e.output}\n`;
         if (e.type === "test_result")
           return `\n[${e.device}] $ ${e.command}\n${e.output}\n`;
         if (e.type === "device_error")
@@ -124,56 +120,49 @@
 
         {#if event.type === "start"}
           <div class="mb-3 text-slate-600">
-            ── Starting:
-            {#if event.total_ping_tests > 0}
-              {event.total_ping_tests} ping test{event.total_ping_tests !== 1 ? "s" : ""},
-            {/if}
-            {#if event.total_command_tests > 0}
-              {event.total_command_tests} command test{event.total_command_tests !== 1 ? "s" : ""}
-              across {event.total_devices} device{event.total_devices !== 1 ? "s" : ""}
-            {/if}
-             ──
+            ── {event.total_devices} device{event.total_devices !== 1 ? "s" : ""},
+            {event.total_tests} test{event.total_tests !== 1 ? "s" : ""} ──
           </div>
 
-        {:else if event.type === "ping_section"}
-          <div class="mt-5 mb-2 text-slate-500">── Host Pings ──</div>
+        {:else if event.type === "device_start"}
+          <div class="mt-6 mb-1">
+            <span class="font-semibold text-cyan-400">[{event.device}]</span>
+            <span class="text-slate-500"> Connecting to </span>
+            <span class="text-slate-300">{event.host}</span>
+            <span class="text-slate-600">…</span>
+          </div>
 
         {:else if event.type === "ping_test_start"}
-          <div class="mt-2 mb-1">
-            <span class="font-semibold text-violet-400">[HOST]</span>
-            <span class="ml-1 text-slate-200">{event.test}</span>
-            <span class="ml-2 text-xs text-slate-600">
+          <!-- Ping group header shown per-device before its destinations -->
+          <div class="mt-2 ml-2 flex items-center gap-2">
+            <span class="inline-block h-1 w-1 rounded-full bg-violet-500"></span>
+            <span class="text-xs font-semibold text-violet-400">{event.test}</span>
+            <span class="text-xs text-slate-600">
               {event.destinations?.length} destination{event.destinations?.length !== 1 ? "s" : ""},
               count={event.count}
             </span>
           </div>
 
         {:else if event.type === "ping_result"}
-          <div class="mt-2 ml-2">
+          <!-- Individual ping destination result, indented within device context -->
+          <div class="mt-1.5 ml-4">
             <div class="mb-0.5 flex items-center gap-2">
               <span class="text-slate-600">$</span>
-              <span class="text-yellow-400">ping {event.destination}</span>
+              <span class="text-yellow-400">{event.command}</span>
               {#if event.success}
-                <span class="rounded bg-emerald-900/60 px-1.5 py-0.5 text-xs text-emerald-400">reachable</span>
+                <span class="rounded bg-emerald-900/60 px-1.5 py-0.5 text-xs text-emerald-400">
+                  reachable
+                </span>
               {:else}
-                <span class="rounded bg-red-900/60 px-1.5 py-0.5 text-xs text-red-400">unreachable</span>
+                <span class="rounded bg-red-900/60 px-1.5 py-0.5 text-xs text-red-400">
+                  unreachable
+                </span>
               {/if}
             </div>
             <pre
-              class="ml-3 whitespace-pre-wrap break-words border-l-2 pl-3 text-sm
-                {event.success ? 'border-emerald-800 text-slate-300' : 'border-red-900 text-red-300'}"
+              class="ml-3 whitespace-pre-wrap break-words border-l-2 pl-3 text-xs
+                {event.success ? 'border-emerald-800/60 text-slate-400' : 'border-red-900/60 text-red-300'}"
             >{event.output}</pre>
-          </div>
-
-        {:else if event.type === "device_section"}
-          <div class="mt-6 mb-2 text-slate-500">── Device Tests ──</div>
-
-        {:else if event.type === "device_start"}
-          <div class="mt-5 mb-1">
-            <span class="font-semibold text-cyan-400">[{event.device}]</span>
-            <span class="text-slate-500"> Connecting to </span>
-            <span class="text-slate-300">{event.host}</span>
-            <span class="text-slate-600">…</span>
           </div>
 
         {:else if event.type === "test_result"}

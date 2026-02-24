@@ -114,13 +114,13 @@ def run_tests():
     enabled_tests = [t for t in config.get("tests", []) if t.get("enabled", False)]
     devices = config.get("inventory", [])
 
-    # Split tests by type: ping tests run from the host; everything else runs on devices
+    # Pings are now sent to each device over SSH — same session as command tests.
     ping_tests = [t for t in enabled_tests if t.get("type") == "ping"]
     command_tests = [t for t in enabled_tests if t.get("type") != "ping"]
 
     def generate():
         from network_handler import run_device_tests
-        from ping_handler import ping_host
+        from ping_handler import build_ping_command, parse_ping_success
 
         results = {}
 
@@ -128,73 +128,82 @@ def run_tests():
             yield _sse({"type": "error", "message": "No tests are enabled"})
             return
 
-        if command_tests and not devices:
-            yield _sse({"type": "error", "message": "No devices in inventory for command tests"})
+        if not devices:
+            yield _sse({"type": "error", "message": "No devices in inventory"})
             return
 
         yield _sse({
             "type": "start",
             "total_devices": len(devices),
-            "total_ping_tests": len(ping_tests),
-            "total_command_tests": len(command_tests),
+            "total_tests": len(enabled_tests),
         })
 
-        # ── Host ping tests ──────────────────────────────────────────────────
-        if ping_tests:
-            yield _sse({"type": "ping_section"})
-            results["HOST"] = {}
+        for device in devices:
+            device_name = device.get("name", "Unknown")
+            device_type = device.get("device_type", "cisco_ios")
+            results[device_name] = {}
+            yield _sse({"type": "device_start", "device": device_name, "host": device_name})
+
+            # Build the task list for this device's SSH session.
+            # Ping destinations are converted to CLI commands; a lookup dict lets
+            # us emit the right event type when results come back.
+            ping_meta = {}   # task_key → {"test": name, "dest": ip}
+            device_tasks = []
 
             for test in ping_tests:
                 test_name = test.get("name", "Ping Test")
-                destinations = test.get("destinations") or []
                 count = int(test.get("count", 4))
+                destinations = test.get("destinations") or []
 
-                yield _sse({
-                    "type": "ping_test_start",
-                    "test": test_name,
-                    "destinations": destinations,
-                    "count": count,
-                })
-
-                for dest in destinations:
-                    output, success = ping_host(dest, count=count)
-                    # Store under "test_name — destination" so diffs are per-destination
-                    snapshot_key = f"{test_name} \u2014 {dest}"
-                    results["HOST"][snapshot_key] = output
+                if destinations:
                     yield _sse({
-                        "type": "ping_result",
+                        "type": "ping_test_start",
+                        "device": device_name,
                         "test": test_name,
-                        "destination": dest,
-                        "output": output,
-                        "success": success,
+                        "destinations": destinations,
+                        "count": count,
                     })
 
-        # ── Device command tests ─────────────────────────────────────────────
-        if command_tests and devices:
-            if ping_tests:
-                yield _sse({"type": "device_section"})
+                for dest in destinations:
+                    command = build_ping_command(dest, count, device_type)
+                    task_key = f"{test_name}::{dest}"
+                    device_tasks.append({"name": task_key, "command": command})
+                    ping_meta[task_key] = {"test": test_name, "dest": dest}
 
-            for device in devices:
-                device_name = device.get("name", "Unknown")
-                results[device_name] = {}
-                yield _sse({"type": "device_start", "device": device_name, "host": device_name})
+            device_tasks.extend(command_tests)
 
-                try:
-                    for test_name, command, output in run_device_tests(device, command_tests):
-                        results[device_name][test_name] = output
+            try:
+                for task_name, command, output in run_device_tests(device, device_tasks):
+                    if task_name in ping_meta:
+                        meta = ping_meta[task_name]
+                        success = parse_ping_success(output)
+                        # Store per-destination under "<test> — <dest>" for diffs
+                        snapshot_key = f"{meta['test']} \u2014 {meta['dest']}"
+                        results[device_name][snapshot_key] = output
+                        yield _sse({
+                            "type": "ping_result",
+                            "device": device_name,
+                            "test": meta["test"],
+                            "destination": meta["dest"],
+                            "command": command,
+                            "output": output,
+                            "success": success,
+                        })
+                    else:
+                        results[device_name][task_name] = output
                         yield _sse({
                             "type": "test_result",
                             "device": device_name,
-                            "test": test_name,
+                            "test": task_name,
                             "command": command,
                             "output": output,
                         })
-                except Exception as exc:
-                    error_msg = str(exc)
-                    results[device_name]["__error__"] = error_msg
-                    yield _sse({"type": "device_error", "device": device_name, "message": error_msg})
+            except Exception as exc:
+                error_msg = str(exc)
+                results[device_name]["__error__"] = error_msg
+                yield _sse({"type": "device_error", "device": device_name, "message": error_msg})
 
-                yield _sse({"type": "device_complete", "device": device_name})
+            yield _sse({"type": "device_complete", "device": device_name})
 
         if mode in ("pre", "post"):
             snapshot_path = os.path.join(SNAPSHOTS_DIR, f"{mode}.json")
