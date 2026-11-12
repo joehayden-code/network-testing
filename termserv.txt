@@ -1,0 +1,79 @@
+# Project: Terminal Services Manager — Planning Phase
+
+## Your task right now
+Do NOT write application code yet. Produce a written implementation plan
+(save it as `docs/PLAN.md`) and a list of open questions for me. Ask me
+clarifying questions before finalizing anything that's ambiguous or
+expensive to change later. Wait for my approval before scaffolding.
+
+## What the application does
+A web application that lets authorized engineers reach out-of-band serial
+consoles on network/server devices through a browser.
+
+1. **Inventory of console servers** — e.g. hostname, IP/FQDN, vendor/model,
+   site/location, SSH port, status, notes.
+2. **Inventory of connected devices under each console server** — device
+   name, console server port number, baud rate/serial settings, device
+   type, site, notes. A device belongs to exactly one console server port.
+3. **Authentication via Okta** (OIDC). Users sign in with SSO; Okta group
+   membership should drive authorization (who can see/connect to what).
+4. **Dedicated service account** — the backend connects to console servers
+   using one service account, not the user's personal credentials. Users
+   never see this credential.
+5. **Browse → select → connect** — a user browses console servers, picks a
+   device, and opens an interactive SSH session to that device's console
+   port in the browser. The session stays open and waits for user input
+   until the user disconnects or an idle timeout hits.
+6. **Copy and paste** must work reliably in the browser terminal, including
+   pasting multi-line configuration blocks.
+
+## Environment / constraints
+- Console server vendors in use: [e.g. Opengear, Cisco, Avocent/Vertiv, Lantronix, mixed]
+- How a port is reached on these devices: [e.g. SSH with `user:portN` username,
+  or SSH to TCP port 3000+N, or unknown — please list the options per vendor]
+- Approximate scale: [# console servers], [# devices], [# concurrent users]
+- Hosting target: [e.g. on-prem Linux VM, Kubernetes, Docker Compose]
+- Preferred stack (if any): [e.g. Python/FastAPI, Go, Node/TypeScript; React frontend]
+- Secrets storage available: [e.g. HashiCorp Vault, CyberArk, AWS Secrets Manager, none yet]
+- Database preference: [e.g. PostgreSQL]
+
+## Things the plan must address
+- **Architecture**: the browser terminal (e.g. xterm.js), a WebSocket
+  channel to the backend, and a backend SSH proxy to the console server.
+  Explain the component boundaries and the data flow.
+- **Okta integration**: OIDC authorization-code flow with PKCE, session
+  handling, token validation on the WebSocket connection, and mapping
+  Okta groups to roles (e.g. viewer, operator, admin).
+- **Authorization model**: which users or groups can see or connect to
+  which console servers or devices (per site? per device group?).
+- **Service account security**: how the credential is stored, fetched,
+  and rotated; host-key verification for console servers; never exposing
+  the credential to the browser.
+- **Attribution and audit**: everyone shares one service account, so the
+  app must record who connected to what and when. Propose session logging
+  and whether to record full session transcripts (keystrokes and output).
+- **Serial-console behavior**:
+  - Paste safety: large pastes can overrun slow serial lines (9600 baud).
+    Propose paste throttling or chunking, and a confirmation before
+    multi-line pastes.
+  - Sending a serial BREAK, if the vendor supports it.
+  - Port contention: what happens when a second user opens a port that's
+    already in use (block, share read-only, take over with warning).
+  - Idle timeouts and clean disconnects.
+- **Inventory management**: CRUD UI and API, bulk import (CSV), and
+  whether to auto-discover ports and labels from the console server's
+  API where the vendor supports it.
+- **Non-functional**: logging, health checks, error handling when a
+  console server is unreachable, and a testing strategy (including a
+  mock console server or SSH target for local development).
+
+## Deliverables for this planning step
+1. `docs/PLAN.md` containing: architecture overview (with a diagram in
+   Mermaid), proposed tech stack with reasoning, data model, API outline,
+   security design, auth/RBAC design, and a phased build plan (MVP first,
+   then enhancements), each phase with acceptance criteria.
+2. A list of open questions and decisions I need to make.
+3. Risks and anything I've asked for that you'd push back on.
+
+Keep the MVP small: Okta login, manual inventory CRUD, connecting to a
+device in the browser with working copy/paste, and a basic audit log.
